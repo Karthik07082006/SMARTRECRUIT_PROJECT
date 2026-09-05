@@ -62,6 +62,8 @@ For Job Seeker:
 5. Click Login securely
 6. Dashboard opens with 8 fake jobs
 7. Click Find Jobs and Apply now
+8. Complete Applicant details and Course registration, then click Submit application
+9. Open My Applications and click View details to see the submitted job and course information
 
 For Job Provider:
 1. Sign out
