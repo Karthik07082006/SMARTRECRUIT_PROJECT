@@ -75,9 +75,45 @@ For Job Provider:
 7. Click Job Postings or Post a Job
 8. Publish a fake job; it appears immediately in Job Postings
 
-## Backend integration
-This is a frontend demo. It is prepared to later connect:
+## Backend
+The project now includes a local Node.js + Express + PostgreSQL API in `server/`.
 
-React → API Gateway → JWT/Auth Service → Eureka → Job Service / Application Service / Profile Service.
+It provides:
+- JWT registration, login and role-based authorization
+- Seeker profiles and provider seeker directory
+- Provider job creation and job listing
+- Seeker applications with validation
+- PDF resume uploads stored on disk with PostgreSQL metadata
+- Protected resume preview/download links for the owner or the relevant provider
+- Provider application decisions: Accepted, Rejected and Unenrolled
 
-Real authentication/database APIs are not included in this ZIP.
+### Run the backend locally
+
+1. Install PostgreSQL and create a database named `smartrecruit`.
+2. Copy `.env.example` to `.env` and update the database credentials if needed.
+3. Install dependencies:
+
+```bash
+npm install
+```
+
+4. Start the API:
+
+```bash
+npm run server:dev
+```
+
+The API runs at `http://localhost:4000`. Check it with `GET /api/health`.
+
+The current React screens still use their browser demo state. The API is ready for the next integration step, where those localStorage actions will be replaced with authenticated API calls.
+
+### Run the Spring Boot backend in STS
+
+The Spring Boot replacement is in `backend-spring/` and is importable as an existing Maven project.
+
+1. In Spring Tool Suite, choose **File → Import → Maven → Existing Maven Projects**.
+2. Select the `backend-spring` folder.
+3. Configure PostgreSQL and SMTP in STS environment variables or `backend-spring/src/main/resources/application.yml`.
+4. Run `com.smartrecruit.SmartRecruitApplication` as **Spring Boot App**.
+
+The Spring API uses the same `http://localhost:4000/api` routes as the Node API. PostgreSQL must be running with the `smartrecruit` database. For real Gmail delivery, set `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM` using a Gmail App Password.

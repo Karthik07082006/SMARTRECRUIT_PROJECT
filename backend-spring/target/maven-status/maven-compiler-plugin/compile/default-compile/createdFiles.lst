@@ -1,0 +1,5 @@
+com\smartrecruit\security\SecurityConfig.class
+com\smartrecruit\security\JwtService.class
+com\smartrecruit\api\SmartRecruitController.class
+com\smartrecruit\security\JwtFilter.class
+com\smartrecruit\SmartRecruitApplication.class

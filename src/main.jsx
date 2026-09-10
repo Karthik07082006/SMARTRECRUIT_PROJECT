@@ -177,16 +177,20 @@ function Portal({role,user,setUser,jobs,setJobs,applications,setApplications,not
     navigate("job-detail");
   };
 
-  const sendCourseRegistrationEmail = details => {
+  const sendCourseRegistrationEmail = async details => {
     const recipient = (details.courseEmail || details.email || "").trim();
-    if (!recipient) return;
-
-    const subject = encodeURIComponent(`Course registration confirmation: ${details.courseName}`);
-    const body = encodeURIComponent(
-      `Hello,\n\nYour course registration has been confirmed.\n\nCourse: ${details.courseName}\nProvider: ${details.courseProvider || "Not provided"}\nStatus: ${details.courseStatus || "In progress"}\nJob: ${details.title || "SmartRecruit application"}\nCompany: ${details.company || "SmartRecruit"}\n\nThis is a confirmation from SmartRecruit.\n\nRegards,\nSmartRecruit Team`
-    );
-
-    window.location.href = `mailto:${recipient}?subject=${subject}&body=${body}`;
+    if (!recipient) return false;
+    try {
+      const response = await fetch("http://localhost:4000/api/dev/enrollment-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to: recipient, seekerName: details.fullName, courseName: details.courseName, jobTitle: details.title, company: details.company })
+      });
+      if (!response.ok) throw new Error("Email request failed");
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const apply = job => {
@@ -203,13 +207,7 @@ function Portal({role,user,setUser,jobs,setJobs,applications,setApplications,not
   };
 
   const unenrollApplication = applicationId => {
-    setApplications(current => current.map(application => application.id === applicationId ? {
-      ...application,
-      status: "Unenrolled",
-      enrolled: false,
-      providerDecision: "unenrolled",
-      courseMessage: `Enrollment withdrawn for ${application.courseName}. You can enroll again later.`
-    } : application));
+    setApplications(current => current.filter(application => application.id !== applicationId));
     notify("Course unenrolled successfully.");
   };
 
@@ -217,6 +215,7 @@ function Portal({role,user,setUser,jobs,setJobs,applications,setApplications,not
     const courseMessage=`Your ${details.courseName} registration is confirmed for the ${selectedJob.title} application at ${selectedJob.company}.`;
     const application = {
       ...details,
+      resume: details.resume || null,
       courseMessage,
       emailSent:true,
       id:selectedJob.id,
@@ -227,16 +226,9 @@ function Portal({role,user,setUser,jobs,setJobs,applications,setApplications,not
       providerDecision:"pending",
     };
 
-    sendCourseRegistrationEmail({
-      ...application,
-      title: selectedJob.title,
-      company: selectedJob.company,
-      courseName: details.courseName,
-      courseProvider: details.courseProvider,
-      courseStatus: details.courseStatus,
-      courseEmail: details.courseEmail || details.email,
+    sendCourseRegistrationEmail({ ...details, title: selectedJob.title, company: selectedJob.company }).then(sent => {
+      notify(sent ? `Course registration email sent to ${details.email}.` : "Application saved, but the registration email could not be sent.");
     });
-
     setApplications([...applications, application]);
     setSelectedJob(null);
     setPage("applications");
@@ -277,10 +269,10 @@ function Portal({role,user,setUser,jobs,setJobs,applications,setApplications,not
     <main className="main">
       {page==="dashboard"&&<Dashboard role={role} user={user} jobs={sorted} applications={applications} setPage={navigate} apply={apply} onOpenJob={openJobDetails} favoriteJobs={favoriteJobs} toggleFavorite={toggleFavorite} notify={notify}/>} 
       {page==="jobs"&&<Jobs role={role} jobs={sorted} query={query} setQuery={setQuery} location={location} setLocation={setLocation} jobType={jobType} setJobType={setJobType} applications={applications} apply={apply} setPage={navigate} onOpenJob={openJobDetails} favoriteJobs={favoriteJobs} toggleFavorite={toggleFavorite}/>} 
-      {page==="job-detail"&&<JobDetail job={selectedJobDetails} onBack={()=>goBack("jobs")} onDashboard={()=>navigate("dashboard")} onJobs={()=>navigate("jobs")} onApply={()=>apply(selectedJobDetails)}/>} 
-      {page==="applications"&&<Applications applications={applications} jobs={jobs} onUnenroll={unenrollApplication} statusClassName={statusClassName}/>} 
+      {page==="job-detail"&&<JobDetail job={selectedJobDetails} provider={role==="provider"} onBack={()=>goBack("jobs")} onDashboard={()=>navigate("dashboard")} onJobs={()=>navigate("jobs")} onApply={()=>apply(selectedJobDetails)}/>} 
+      {page==="applications"&&<Applications applications={applications} jobs={jobs} onUnenroll={unenrollApplication} statusClassName={statusClassName} setApplications={setApplications} notify={notify}/>}
       {page==="profile"&&<ProfileEditor user={user} setUser={setUser} role={role} notify={notify}/>} 
-      {page==="candidates"&&<Candidates applications={applications} setApplications={setApplications} notify={notify}/>} 
+      {page==="candidates"&&<Candidates applications={applications} setApplications={setApplications} notify={notify} sendEnrollmentEmail={sendCourseRegistrationEmail}/>} 
       {page==="seeker-profiles"&&<SeekerProfiles/>} 
       {page==="post"&&<PostJob onPost={postJob}/>} 
     </main>
@@ -371,10 +363,10 @@ function Jobs({role,jobs,query,setQuery,location,setLocation,jobType,setJobType,
  </>;
 }
 
-function JobDetail({job,onBack,onDashboard,onJobs,onApply}) {
+function JobDetail({job,provider=false,onBack,onDashboard,onJobs,onApply}) {
   if(!job) return null;
-  return <div className="job-detail-page"><div className="detail-nav"><button className="link" onClick={onDashboard}>Dashboard</button><span>/</span><button className="link" onClick={onJobs}>Find Jobs</button><span>/</span><b>{job.title}</b></div><Title kicker="JOB DETAILS" title={job.title} sub={`${job.company} · ${job.location}`} action={<button className="primary" onClick={onBack}>← Back</button>}/>
-    <div className="job-detail-layout"><div className="card job-detail-main"><div className="job-detail-brand"><CompanyLogo job={job}/><div><h2>{job.company}</h2><p>{job.location} · {job.type} · {job.salary}</p></div></div><div className="chips">{job.tags.map(tag=><span key={tag}>{tag}</span>)}</div><section><h3>About the role</h3><p>{job.description}</p></section><section><h3>What you will do</h3><ul>{job.responsibilities.map(item=><li key={item}>{item}</li>)}</ul></section><section><h3>What you bring</h3><ul>{job.requirements.map(item=><li key={item}>{item}</li>)}</ul></section></div><aside className="card job-detail-side"><h3>Role summary</h3><div className="job-detail-facts"><span><b>Location</b>{job.location}</span><span><b>Job type</b>{job.type}</span><span><b>Salary</b>{job.salary}</span></div><button className="primary wide-btn" onClick={onApply}>Apply now</button><h3>Benefits</h3><ul>{job.benefits.map(item=><li key={item}>{item}</li>)}</ul></aside></div>
+  return <div className="job-detail-page"><div className="detail-nav"><button className="link" onClick={onDashboard}>Dashboard</button><span>/</span><button className="link" onClick={onJobs}>{provider?"Job Postings":"Find Jobs"}</button><span>/</span><b>{job.title}</b></div><Title kicker="JOB DETAILS" title={job.title} sub={`${job.company} · ${job.location}`} action={<button className="primary" onClick={onBack}>← Back</button>}/>
+    <div className="job-detail-layout"><div className="card job-detail-main"><div className="job-detail-brand"><CompanyLogo job={job}/><div><h2>{job.company}</h2><p>{job.location} · {job.type} · {job.salary}</p></div></div><div className="chips">{job.tags.map(tag=><span key={tag}>{tag}</span>)}</div><section><h3>About the role</h3><p>{job.description}</p></section><section><h3>What you will do</h3><ul>{job.responsibilities.map(item=><li key={item}>{item}</li>)}</ul></section><section><h3>What you bring</h3><ul>{job.requirements.map(item=><li key={item}>{item}</li>)}</ul></section></div><aside className="card job-detail-side"><h3>Role summary</h3><div className="job-detail-facts"><span><b>Location</b>{job.location}</span><span><b>Job type</b>{job.type}</span><span><b>Salary</b>{job.salary}</span></div>{!provider&&<button className="primary wide-btn" onClick={onApply}>Apply now</button>}<h3>Benefits</h3><ul>{job.benefits.map(item=><li key={item}>{item}</li>)}</ul></aside></div>
   </div>
 }
 
@@ -383,13 +375,15 @@ function JobCard({job,wide=false,onOpenJob,apply,applied,provider=false,favorite
   return <article className={"job-card "+(wide?"wide":"")} onClick={()=>onOpenJob?.(job)} role={onOpenJob?"button":undefined} tabIndex={onOpenJob?0:undefined}><CompanyLogo job={job}/><div className="job-body"><div className="job-head"><div><h3>{job.title}</h3><p>{job.company} · {job.location}</p></div><button className={favorite?"heart saved":"heart"} onClick={event=>{event.stopPropagation();onToggleFavorite?.();}} aria-label={favorite?"Remove saved job":"Save job"}>{favorite?"♥":"♡"}</button></div><div className="chips">{job.tags.map(t=><span key={t}>{t}</span>)}</div><div className="job-meta"><span>◷ Recently posted</span><span>▤ {job.type}</span><span>₹ {job.salary.replace("₹ ","")}</span>{!provider&&<button className={enrolled || applied ? "applied" : "apply"} onClick={event=>{event.stopPropagation();if(!enrolled) apply();}} disabled={enrolled}>{actionLabel}</button>}</div></div></article>
 }
 
-function Applications({applications,jobs,onUnenroll,statusClassName}) {
+function Applications({applications,jobs,onUnenroll,statusClassName,setApplications,notify}) {
  const [selected,setSelected] = useState(null);
- return <><Title kicker="APPLICATION TRACKER" title="My applications" sub="Monitor your submitted applications from one dashboard."/><Metrics values={[[applications.filter(a=>a.status !== "Rejected" && a.status !== "Unenrolled").length,"Total applications","Your active search"],[applications.filter(a=>a.status==="Pending review"||a.status==="Accepted"||a.status==="Applied").length,"Submitted","Awaiting response"],[applications.filter(a=>a.courseName).length,"Course details","Included in applications"],["6","Saved jobs","Explore more"]]}/><div className="card table-card"><CardTitle title="Application history" sub="Select an application to view the details you submitted."/><table><thead><tr><th>ROLE</th><th>COMPANY</th><th>DATE</th><th>STATUS</th><th>ACTIONS</th></tr></thead><tbody>{applications.length?applications.map(a=><tr key={a.id}><td><b>{a.title}</b></td><td>{a.company}</td><td>{a.date}</td><td><span className={statusClassName ? statusClassName(a.status) : "status"}>{a.status}</span></td><td><div className="row-actions"><button className="link" onClick={()=>setSelected(selected?.id===a.id?null:a)}>View details</button>{a.status === "Accepted" && <button className="link danger-link" onClick={()=>onUnenroll?.(a.id)}>Unenroll</button>}</div></td></tr>):<tr><td colSpan="5" className="empty">No applications yet. Go to Find Jobs and apply to a demo job.</td></tr>}</tbody></table>{selected&&<ApplicationDetails application={selected} onUnenroll={onUnenroll} statusClassName={statusClassName}/>}</div></>
+ const removeAllCourses = () => { setSelected(null); setApplications(current => current.filter(application => !application.courseName)); notify("All course applications removed."); };
+ return <><Title kicker="APPLICATION TRACKER" title="My applications" sub="Monitor your submitted applications from one dashboard." action={applications.some(application=>application.courseName) ? <button className="outline" onClick={removeAllCourses}>Remove all courses</button> : null}/><Metrics values={[[applications.filter(a=>a.status !== "Rejected" && a.status !== "Unenrolled").length,"Total applications","Your active search"],[applications.filter(a=>a.status==="Pending review"||a.status==="Accepted"||a.status==="Applied").length,"Submitted","Awaiting response"],[applications.filter(a=>a.courseName).length,"Course details","Included in applications"],["6","Saved jobs","Explore more"]]}/><div className="card table-card"><CardTitle title="Application history" sub="Select an application to view the details you submitted."/><table><thead><tr><th>ROLE</th><th>COMPANY</th><th>DATE</th><th>STATUS</th><th>ACTIONS</th></tr></thead><tbody>{applications.length?applications.map(a=><tr key={a.id}><td><b>{a.title}</b></td><td>{a.company}</td><td>{a.date}</td><td><span className={statusClassName ? statusClassName(a.status) : "status"}>{a.status}</span></td><td><div className="row-actions"><button className="link" onClick={()=>setSelected(selected?.id===a.id?null:a)}>View details</button>{a.status === "Accepted" && <button className="link danger-link" onClick={()=>{setSelected(null);onUnenroll?.(a.id);}}>Unenroll</button>}</div></td></tr>):<tr><td colSpan="5" className="empty">No applications yet. Go to Find Jobs and apply to a demo job.</td></tr>}</tbody></table>{selected&&applications.some(application=>application.id===selected.id)&&<ApplicationDetails application={selected} onUnenroll={applicationId=>{setSelected(null);onUnenroll?.(applicationId);}} statusClassName={statusClassName}/>}</div></>
 }
 
 function ApplicationDetails({application,onUnenroll,statusClassName}) {
- return <div className="application-details"><div><span className="kicker">SUBMITTED APPLICATION</span><h3>{application.title}</h3><p>{application.company} · Applied {application.date}</p></div><span className={statusClassName ? statusClassName(application.status) : "status"}>{application.status}</span><div className="detail-grid"><Field l="Applicant" v={application.fullName}/><Field l="Email" v={application.email}/><Field l="Phone" v={application.phone}/><Field l="Education" v={application.education}/><Field l="Experience" v={application.experience}/><Field l="Course / certification" v={application.courseName || "Not provided"}/><Field l="Course provider" v={application.courseProvider || "Not provided"}/><Field l="Course email" v={application.courseEmail || "Not provided"}/><Field l="Course status" v={application.courseStatus || "Not provided"}/></div><div className="email-confirmation"><span>✉</span><div><b>{application.status === "Accepted" ? "Enrollment accepted by provider" : application.status === "Rejected" ? "Enrollment rejected by provider" : application.status === "Unenrolled" ? "Enrollment withdrawn by seeker" : "Course registration message sent"}</b><small>{application.courseEmail} · {application.courseMessage}</small></div></div>{application.status === "Accepted" && <button className="outline" onClick={()=>onUnenroll?.(application.id)}>Unenroll course</button>}<div className="resume-attachment"><span>PDF</span><div><b>{application.resumeName || "No resume attached"}</b><small>{application.resumeSize ? `${application.resumeSize} MB · Ready for review` : "No resume was uploaded"}</small></div></div><div className="detail-note"><b>Cover note</b><p>{application.coverLetter || "No cover note provided."}</p></div></div>
+ const resume = application.resume || (application.resumeDataUrl ? { name: application.resumeName, size: application.resumeSize, dataUrl: application.resumeDataUrl } : null);
+ return <div className="application-details"><div><span className="kicker">SUBMITTED APPLICATION</span><h3>{application.title}</h3><p>{application.company} · Applied {application.date}</p></div><span className={statusClassName ? statusClassName(application.status) : "status"}>{application.status}</span><div className="detail-grid"><Field l="Applicant" v={application.fullName}/><Field l="Email" v={application.email}/><Field l="Phone" v={application.phone}/><Field l="Education" v={application.education}/><Field l="Experience" v={application.experience}/><Field l="Course / certification" v={application.courseName || "Not provided"}/><Field l="Course provider" v={application.courseProvider || "Not provided"}/><Field l="Course email" v={application.courseEmail || "Not provided"}/><Field l="Course status" v={application.courseStatus || "Not provided"}/></div><div className="email-confirmation"><span>✉</span><div><b>{application.status === "Accepted" ? "Enrollment accepted by provider" : application.status === "Rejected" ? "Enrollment rejected by provider" : application.status === "Unenrolled" ? "Enrollment withdrawn by seeker" : "Course registration message sent"}</b><small>{application.courseEmail} · {application.courseMessage}</small></div></div>{application.status === "Accepted" && <button className="outline" onClick={()=>onUnenroll?.(application.id)}>Unenroll course</button>}<div className="resume-attachment"><span>PDF</span><div><b>{application.resumeName || "No resume attached"}</b><small>{application.resumeSize ? `${application.resumeSize} MB · Ready for review` : "No resume was uploaded"}</small></div>{resume?.dataUrl ? <a className="resume-open-link" href={resume.dataUrl} target="_blank" rel="noreferrer">Open PDF ↗</a> : null}</div><div className="detail-note"><b>Cover note</b><p>{application.coverLetter || "No cover note provided."}</p></div></div>
 }
 
 function ApplicationForm({job,user,onCancel,onSubmit}) {
@@ -397,7 +391,22 @@ function ApplicationForm({job,user,onCancel,onSubmit}) {
  const [resumeError,setResumeError] = useState("");
  const [formError,setFormError] = useState("");
  const update=(key,value)=>setData(current=>({...current,[key]:value}));
- const handleResume = event => { const file=event.target.files?.[0]; if(!file) return; if(file.type!=="application/pdf"){setResumeError("Please upload a PDF file.");event.target.value="";return;} if(file.size>5*1024*1024){setResumeError("Resume must be 5 MB or smaller.");event.target.value="";return;} setResumeError(""); update("resumeName",file.name); update("resumeSize",(file.size/(1024*1024)).toFixed(2)); };
+ const handleResume = event => {
+   const file=event.target.files?.[0];
+   if(!file) return;
+   if(file.type!=="application/pdf"){setResumeError("Please upload a PDF file.");event.target.value="";return;}
+   if(file.size>5*1024*1024){setResumeError("Resume must be 5 MB or smaller.");event.target.value="";return;}
+   const reader = new FileReader();
+   reader.onload = () => {
+     const resumeObject = { name:file.name, size:(file.size/(1024*1024)).toFixed(2), dataUrl:reader.result };
+     setResumeError("");
+     update("resume",resumeObject);
+     update("resumeName",file.name);
+     update("resumeSize",(file.size/(1024*1024)).toFixed(2));
+     update("resumeDataUrl",reader.result);
+   };
+   reader.readAsDataURL(file);
+ };
  const submit = () => { const submission={...data,courseEmail:data.email}; const required=["fullName","email","phone","education","experience","courseName","courseProvider","resumeName"]; if(required.some(key=>!String(submission[key]||"").trim())){setFormError("Complete all applicant and course details, including the course message email, then attach a PDF resume before applying.");return;} if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(submission.courseEmail)){setFormError("Enter a valid email address for the course registration message.");return;} setFormError(""); onSubmit(submission); };
  return <div className="modal-backdrop"><div className="application-modal"><div className="modal-head"><div><span className="kicker">APPLY FOR THIS ROLE</span><h2>{job.title}</h2><p>{job.company} · {job.location}</p></div><button className="modal-close" onClick={onCancel} aria-label="Close application form">×</button></div><div className="application-section"><h3>Applicant details <em className="required-note">Required</em></h3><div className="form-grid"><Field l="Full name *" v={data.fullName} set={v=>update("fullName",v)}/><Field l="Email address *" v={data.email} set={v=>update("email",v)}/><Field l="Phone number *" v={data.phone} set={v=>update("phone",v)}/><Field l="Education *" v={data.education} set={v=>update("education",v)}/><Field l="Experience *" v={data.experience} set={v=>update("experience",v)}/></div></div><div className="application-section"><h3>Course registration <em className="required-note">Required</em></h3><p className="form-hint">Add the course or certification that supports your application.</p><div className="form-grid"><Field l="Course / certification *" v={data.courseName} set={v=>update("courseName",v)}/><Field l="Course provider *" v={data.courseProvider} set={v=>update("courseProvider",v)}/><label className="field"><span>Course status</span><select value={data.courseStatus} onChange={e=>update("courseStatus",e.target.value)}><option>In progress</option><option>Completed</option><option>Planning to enroll</option></select></label></div></div><div className="resume-upload"><div><h3>Resume <em className="required-note">Required</em></h3><p className="form-hint">Upload your latest resume as a PDF, up to 5 MB.</p></div><label className="resume-picker"><span>＋ Choose PDF</span><input type="file" accept="application/pdf,.pdf" onChange={handleResume}/></label>{data.resumeName&&<div className="selected-resume"><b>{data.resumeName}</b><span>{data.resumeSize} MB</span></div>}{resumeError&&<small className="resume-error">{resumeError}</small>}</div><label className="field full"><span>Why are you a good fit?</span><textarea value={data.coverLetter} onChange={e=>update("coverLetter",e.target.value)} placeholder="Share a short note with the hiring team..."/></label>{formError&&<div className="form-error">{formError}</div>}<div className="form-actions"><button className="outline" onClick={onCancel}>Cancel</button><button className="primary" onClick={submit}>Submit application →</button></div></div></div>
 }
@@ -412,7 +421,7 @@ function SeekerProfiles(){
   return <><Title kicker="TALENT DIRECTORY" title="Seeker profiles" sub="Browse job seeker profiles and uploaded resumes independently from applications."/><div className="profile-directory">{profiles.length?profiles.map(profile=><div className="card directory-card" key={profile.email}><div className="profile-top"><div className="profile-avatar">{initials(profile.name)}</div><div><h2>{profile.name}</h2><p>{profile.headline} · {profile.location}</p><span>{profile.experience}</span></div></div><p className="directory-about">{profile.about}</p><div className="directory-footer">{profile.resume?.dataUrl?<a className="resume-open-link" href={profile.resume.dataUrl} target="_blank" rel="noreferrer">Open {profile.resume.name} ↗</a>:<span>{profile.resume?`Resume: ${profile.resume.name}`:"No resume uploaded"}</span>}<button className="outline" onClick={()=>setSelected(profile)}>View profile</button></div></div>):<div className="card empty-directory"><h3>No seeker profiles available yet</h3><p>Profiles appear here after job seekers save their profile details.</p></div>}</div>{selected&&<CandidateProfileModal candidate={{profile:selected,profileResume:selected.resume,application:{title:"Open talent profile",company:"SmartRecruit directory",status:"Profile"}}} onClose={()=>setSelected(null)}/>}</>
 }
 
-function Candidates({applications,setApplications,notify}){
+function Candidates({applications,setApplications,notify,sendEnrollmentEmail}){
   const [statusFilter,setStatusFilter] = useState("all");
   const [search,setSearch] = useState("");
   const [selectedCandidate,setSelectedCandidate] = useState(null);
@@ -426,6 +435,10 @@ function Candidates({applications,setApplications,notify}){
   });
 
   const updateStatus = (id, nextStatus) => {
+    const application = applications.find(item => item.id === id);
+    if (nextStatus === "Accepted" && application) {
+      sendEnrollmentEmail(application);
+    }
     setApplications(current => current.map(application => application.id === id ? {
       ...application,
       status: nextStatus,
@@ -453,7 +466,7 @@ function Candidates({applications,setApplications,notify}){
         </select>
       </div>
     </div>
-    <div className="candidate-list">{filteredRequests.length ? filteredRequests.map(application => { const profile=profiles[application.email]||{}; const profileResume=profile.resume||application.resumeName&&{name:application.resumeName,size:application.resumeSize}; return <div className="candidate" key={application.id}><div className="profile-avatar small">{initials(application.fullName || application.name || "SE")}</div><div className="candidate-info"><h3>{application.fullName || application.name || "Seeker"}</h3><p>{application.title} · {application.company}</p><div className="chips">{[application.courseName, application.courseProvider, application.courseStatus].filter(Boolean).map((item, idx)=><span key={`${application.id}-${idx}`}>{item}</span>)}</div>{profileResume&&<div className="candidate-resume"><b>Resume</b><span>{profileResume.name} · {profileResume.size} MB</span></div>}</div><div className="match"><b>{application.status}</b><small>{application.providerDecision === "pending" ? "Awaiting review" : application.providerDecision || "reviewed"}</small></div><button className="link profile-view-button" onClick={()=>setSelectedCandidate({application,profile,profileResume})}>View profile</button>{application.status === "Pending review" ? <><button className="outline" onClick={()=>updateStatus(application.id, "Rejected")}>Reject</button><button className="primary" onClick={()=>updateStatus(application.id, "Accepted")}>Accept</button></> : <button className="primary" onClick={()=>updateStatus(application.id, application.status === "Accepted" ? "Rejected" : "Accepted")}>{application.status === "Accepted" ? "Mark rejected" : "Mark accepted"}</button>}</div>}) : <div className="card"><h3>No enrollment requests match your filters</h3><p>Try clearing the search or changing the status filter.</p></div>}</div>
+    <div className="candidate-list">{filteredRequests.length ? filteredRequests.map(application => { const profile=profiles[application.email]||{}; const profileResume = profile.resume || (application.resume ? { ...application.resume, name: application.resume.name || application.resumeName } : (application.resumeName && { name: application.resumeName, size: application.resumeSize, dataUrl: application.resumeDataUrl })); return <div className="candidate" key={application.id}><div className="profile-avatar small">{initials(application.fullName || application.name || "SE")}</div><div className="candidate-info"><h3>{application.fullName || application.name || "Seeker"}</h3><p>{application.title} · {application.company}</p><div className="chips">{[application.courseName, application.courseProvider, application.courseStatus].filter(Boolean).map((item, idx)=><span key={`${application.id}-${idx}`}>{item}</span>)}</div>{profileResume&&<div className="candidate-resume"><b>Resume</b><span>{profileResume.name} · {profileResume.size} MB</span></div>}</div><div className="match"><b>{application.status}</b><small>{application.providerDecision === "pending" ? "Awaiting review" : application.providerDecision || "reviewed"}</small></div><button className="link profile-view-button" onClick={()=>setSelectedCandidate({application,profile,profileResume})}>View profile</button>{application.status === "Pending review" ? <><button className="outline" onClick={()=>updateStatus(application.id, "Rejected")}>Reject</button><button className="primary" onClick={()=>updateStatus(application.id, "Accepted")}>Accept</button></> : <button className="primary" onClick={()=>updateStatus(application.id, application.status === "Accepted" ? "Rejected" : "Accepted")}>{application.status === "Accepted" ? "Mark rejected" : "Mark accepted"}</button>}</div>}) : <div className="card"><h3>No enrollment requests match your filters</h3><p>Try clearing the search or changing the status filter.</p></div>}</div>
     {selectedCandidate&&<CandidateProfileModal candidate={selectedCandidate} onClose={()=>setSelectedCandidate(null)}/>} 
   </>
 }
@@ -470,7 +483,7 @@ function ProfileEditor({user,setUser,role,notify}){
  const update=(key,value)=>setProfile(current=>({...current,[key]:value}));
  const handleResume=event=>{const file=event.target.files?.[0];if(!file)return;if(file.type!=="application/pdf"){setResumeError("Please upload a PDF file.");event.target.value="";return;}if(file.size>5*1024*1024){setResumeError("Resume must be 5 MB or smaller.");event.target.value="";return;}const reader=new FileReader();reader.onload=()=>{setResumeError("");update("resume",{name:file.name,size:(file.size/(1024*1024)).toFixed(2),dataUrl:reader.result});};reader.readAsDataURL(file);};
  const save=()=>{const nextUser={...user,...profile};setUser(nextUser);const session=readStorage(SESSION_KEY,null);if(session)localStorage.setItem(SESSION_KEY,JSON.stringify({...session,user:{...session.user,...profile}}));const profiles=readStorage(PROFILES_KEY,{});profiles[profile.email]={...profile,resume:profile.resume||null};localStorage.setItem(PROFILES_KEY,JSON.stringify(profiles));notify("Profile saved to this browser");};
- return <><Title kicker="MY PROFILE" title="Professional profile" sub="Your profile helps providers discover the right talent." action={<button className="primary" onClick={save}>Save changes</button>}/><div className="profile-grid"><div className="card profile-card"><div className="profile-top"><div className="profile-avatar">{initials(profile.name)}</div><div><h2>{profile.name}</h2><p>{profile.headline} · {profile.location}</p><span>✓ Profile verified</span></div></div><div className="form-grid"><Field l="Full name" v={profile.name} set={v=>update("name",v)}/><Field l="Email" v={profile.email} set={v=>update("email",v)}/><Field l="Phone" v={profile.phone} set={v=>update("phone",v)}/><Field l="Location" v={profile.location} set={v=>update("location",v)}/><Field l="Headline" v={profile.headline} set={v=>update("headline",v)}/><Field l="Experience" v={profile.experience} set={v=>update("experience",v)}/></div><label className="field full"><span>About</span><textarea value={profile.about} onChange={e=>update("about",e.target.value)}/></label></div><div className="card"><h3>Skills</h3><p>Key capabilities</p><div className="skills">{["Java","Spring Boot","React","JavaScript","REST APIs","MySQL","Git","Docker","AWS","Microservices"].map(s=><span key={s}>{s} ×</span>)}</div><button className="outline">＋ Add skill</button><hr/><h3>Resume</h3><label className="resume-picker"><span>＋ Choose PDF</span><input type="file" accept="application/pdf,.pdf" onChange={handleResume}/></label>{profile.resume?<div className="selected-resume"><b>{profile.resume.name}</b><span>{profile.resume.size} MB · Visible to providers</span></div>:<small className="resume-help">Add a PDF resume so providers can review it with your applications.</small>}{resumeError&&<small className="resume-error">{resumeError}</small>}</div></div></>}
+ return <><Title kicker="MY PROFILE" title="Professional profile" sub="Your profile helps providers discover the right talent." action={<button className="primary" onClick={save}>Save changes</button>}/><div className="profile-grid"><div className="card profile-card"><div className="profile-top"><div className="profile-avatar">{initials(profile.name)}</div><div><h2>{profile.name}</h2><p>{profile.headline} · {profile.location}</p><span>✓ Profile verified</span></div></div><div className="form-grid"><Field l="Full name" v={profile.name} set={v=>update("name",v)}/><Field l="Email" v={profile.email} set={v=>update("email",v)}/><Field l="Phone" v={profile.phone} set={v=>update("phone",v)}/><Field l="Location" v={profile.location} set={v=>update("location",v)}/><Field l="Headline" v={profile.headline} set={v=>update("headline",v)}/><Field l="Experience" v={profile.experience} set={v=>update("experience",v)}/></div><label className="field full"><span>About</span><textarea value={profile.about} onChange={e=>update("about",e.target.value)}/></label></div><div className="card"><h3>Skills</h3><p>Key capabilities</p><div className="skills">{["Java","Spring Boot","React","JavaScript","REST APIs","MySQL","Git","Docker","AWS","Microservices"].map(s=><span key={s}>{s} ×</span>)}</div><button className="outline">＋ Add skill</button><hr/><h3>Resume</h3><label className="resume-picker"><span>＋ Choose PDF</span><input type="file" accept="application/pdf,.pdf" onChange={handleResume}/></label>{profile.resume ? <div className="selected-resume"><b>{profile.resume.name}</b><span>{profile.resume.size} MB · Visible to providers</span>{profile.resume.dataUrl ? <a className="resume-open-link" href={profile.resume.dataUrl} target="_blank" rel="noreferrer">Open PDF ↗</a> : null}</div> : <small className="resume-help">Add a PDF resume so providers can review it with your applications.</small>}{resumeError&&<small className="resume-error">{resumeError}</small>}</div></div></>}
 
 function Field({l,v,set}){
   const props = set ? { value: v ?? "", onChange: e => set(e.target.value) } : { defaultValue: v ?? "" };
