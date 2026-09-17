@@ -38,6 +38,11 @@ public class SmartRecruitController {
         this.uploadDir = Paths.get(uploadDir); Files.createDirectories(this.uploadDir);
     }
 
+    @GetMapping({"", "/"})
+    public Map<String, Object> root() {
+        return Map.of("ok", true, "service", "smartrecruit-api", "framework", "spring-boot", "message", "Use /api/health or /api/auth/login");
+    }
+
     @GetMapping("/health") public Map<String, Object> health() { return Map.of("ok", true, "service", "smartrecruit-api", "framework", "spring-boot"); }
 
     @PostMapping("/auth/register")

@@ -21,7 +21,7 @@ public class SecurityConfig {
     public SecurityConfig(JwtFilter jwtFilter) { this.jwtFilter = jwtFilter; }
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
     @Bean SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        return http.csrf(csrf -> csrf.disable()).cors(cors -> {}).sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)).authorizeHttpRequests(auth -> auth.requestMatchers("/api/health", "/api/auth/**", "/api/dev/enrollment-email", "/error").permitAll().requestMatchers(HttpMethod.OPTIONS, "/**").permitAll().anyRequest().authenticated()).addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class).build();
+        return http.csrf(csrf -> csrf.disable()).cors(cors -> {}).sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)).authorizeHttpRequests(auth -> auth.requestMatchers("/", "/api", "/api/", "/api/health", "/api/auth/**", "/api/dev/enrollment-email", "/error").permitAll().requestMatchers(HttpMethod.OPTIONS, "/**").permitAll().anyRequest().authenticated()).addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class).build();
     }
     @Bean CorsConfigurationSource corsConfigurationSource(@Value("${smartrecruit.client-origin}") String origin) {
         CorsConfiguration config = new CorsConfiguration(); config.setAllowedOrigins(List.of(origin)); config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "OPTIONS")); config.setAllowedHeaders(List.of("*")); config.setAllowCredentials(true);
